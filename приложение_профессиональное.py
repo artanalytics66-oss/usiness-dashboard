@@ -2,583 +2,630 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 from datetime import datetime, timedelta
 import hashlib
-import json
 from io import BytesIO
 from sklearn.linear_model import LinearRegression
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
+
+# ВАЖНО: ДОЛЖНО БЫТЬ ПЕРВОЙ streamlit-командой и ВЫЗЫВАТЬСЯ 1 РАЗ
+st.set_page_config(
+    page_title="Панель управления",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 # ==================== КОНФИГУРАЦИЯ И БЕЗОПАСНОСТЬ ====================
 
 MASTER_PASSWORD = "панель123"  # ИЗМЕНИТЕ НА СВОЙ ПАРОЛЬ!
 
-def hash_password(password):
-    """Хеширует пароль"""
-    return hashlib.sha256(password.encode()).hexdigest()
 
-def check_password():
-    """Проверка пароля при входе"""
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    
-    if not st.session_state.authenticated:
-        st.set_page_config(page_title="Панель управления - Вход", layout="centered")
-        st.markdown("""
-            <style>
-                .login-container {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    height: 100vh;
-                }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("# 🔐 Панель управления бизнесом")
-        st.markdown("### Профессиональный инструмент аналитики")
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            password = st.text_input("Пароль:", type="password", key="password_input")
-            
-            if st.button("Войти", use_container_width=True):
-                if hash_password(password) == hash_password(MASTER_PASSWORD):
-                    st.session_state.authenticated = True
-                    st.success("✓ Вход выполнен!")
-                    st.rerun()
-                else:
-                    st.error("✗ Неверный пароль")
-        
-        st.markdown("---")
-        st.markdown("""
-        ### 📊 О приложении
-        
-        **Профессиональная панель управления** для анализа бизнеса:
-        - Прогнозирование доходов
-        - ABC-анализ клиентов
-        - Интерактивные фильтры
-        - Экспорт отчётов
-        - Автоматические алерты
-        
-        **Цена**: 50 000 руб
-        """)
-        st.stop()
+def _хеш_пароля(пароль: str) -> str:
+    return hashlib.sha256(пароль.encode("utf-8")).hexdigest()
+
+
+def проверка_пароля() -> None:
+    if "авторизован" not in st.session_state:
+        st.session_state.авторизован = False
+
+    if st.session_state.авторизован:
+        return
+
+    st.markdown(
+        """
+        <style>
+            .блок-входа{
+                max-width: 420px;
+                margin: 10vh auto 0 auto;
+                padding: 24px;
+                border-radius: 14px;
+                background: #151b24;
+                border: 1px solid #2a3038;
+                box-shadow: 0 10px 30px rgba(0,0,0,.35);
+            }
+            .заголовок{
+                font-size: 26px;
+                font-weight: 800;
+                color: #fff;
+                margin-bottom: 8px;
+                text-align:center;
+            }
+            .подзаголовок{
+                color:#8a92a0;
+                text-align:center;
+                margin-bottom: 18px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="блок-входа">', unsafe_allow_html=True)
+    st.markdown('<div class="заголовок">Панель управления бизнесом</div>', unsafe_allow_html=True)
+    st.markdown('<div class="подзаголовок">Вход по паролю</div>', unsafe_allow_html=True)
+
+    пароль = st.text_input("Пароль", type="password")
+    if st.button("Войти", use_container_width=True):
+        if _хеш_пароля(пароль) == _хеш_пароля(MASTER_PASSWORD):
+            st.session_state.авторизован = True
+            st.success("Вход выполнен")
+            st.rerun()
+        else:
+            st.error("Неверный пароль")
+
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
 
 # ==================== СТИЛИ ====================
 
-def apply_styles():
-    """Применяет стили приложения"""
-    st.markdown("""
+def применить_стили() -> None:
+    st.markdown(
+        """
         <style>
-        * {
-            margin: 0;
-            padding: 0;
-        }
-        
-        body {
-            background-color: #0f1419;
-            color: #e0e0e0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-        
-        .metric-card {
-            background: linear-gradient(135deg, #1a1f29 0%, #252d3a 100%);
-            border: 1px solid #2a3038;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-        
-        .metric-title {
-            color: #8a92a0;
-            font-size: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 12px;
-        }
-        
-        .metric-value {
-            color: #ffffff;
-            font-size: 42px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-        
-        .metric-change {
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        .positive { color: #10b981; }
-        .negative { color: #ef4444; }
-        .neutral { color: #8a92a0; }
-        .warning { color: #f59e0b; }
-        
-        .section-title {
-            color: #ffffff;
-            font-size: 24px;
-            font-weight: 700;
-            margin: 32px 0 16px 0;
-            padding-bottom: 12px;
-            border-bottom: 2px solid #2a3038;
-        }
-        
-        .forecast-box {
-            background: #1a2332;
-            border-left: 4px solid #10b981;
-            padding: 16px;
-            border-radius: 8px;
-            margin: 16px 0;
-        }
-        
-        .alert-box {
-            background: #2d1f1f;
-            border-left: 4px solid #ef4444;
-            padding: 16px;
-            border-radius: 8px;
-            margin: 12px 0;
-        }
-        
-        .alert-box.warning {
-            background: #2d2410;
-            border-left-color: #f59e0b;
-        }
-        
-        .alert-box.success {
-            background: #1f2d23;
-            border-left-color: #10b981;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+            body { background-color: #0f1419; color: #e0e0e0; }
+            .metric-card{
+                background: linear-gradient(135deg, #1a1f29 0%, #252d3a 100%);
+                border: 1px solid #2a3038;
+                border-radius: 12px;
+                padding: 18px 18px 14px 18px;
+                margin-bottom: 14px;
+                box-shadow: 0 6px 16px rgba(0,0,0,.25);
+            }
+            .metric-title{
+                color: #8a92a0;
+                font-size: 12px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .6px;
+                margin-bottom: 10px;
+            }
+            .metric-value{
+                color: #ffffff;
+                font-size: 38px;
+                font-weight: 800;
+                line-height: 1.0;
+                margin-bottom: 6px;
+            }
+            .metric-change{
+                font-size: 13px;
+                font-weight: 600;
+            }
+            .positive{ color: #10b981; }
+            .negative{ color: #ef4444; }
+            .neutral{  color: #8a92a0; }
+            .warning{  color: #f59e0b; }
 
-# ==================== ГЕНЕРИРОВАНИЕ И ЗАГРУЗКА ДАННЫХ ====================
+            .box{
+                background: #151b24;
+                border: 1px solid #2a3038;
+                border-radius: 12px;
+                padding: 14px 16px;
+            }
+            .alert{
+                padding: 12px 14px;
+                border-radius: 10px;
+                margin: 10px 0;
+                border-left: 4px solid;
+                background: #151b24;
+                border-top: 1px solid #2a3038;
+                border-right: 1px solid #2a3038;
+                border-bottom: 1px solid #2a3038;
+            }
+            .alert-danger{ border-left-color:#ef4444; }
+            .alert-warn{   border-left-color:#f59e0b; }
+            .alert-ok{     border-left-color:#10b981; }
+
+            .hint{ color:#8a92a0; font-size:12px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ==================== ДАННЫЕ ====================
+
+def _нормализовать_маржу(значение) -> float:
+    try:
+        v = float(значение)
+    except Exception:
+        return np.nan
+    # Если маржа пришла как 25 (то есть 25%), приводим к 0.25
+    if v > 1.0:
+        v = v / 100.0
+    return v
+
 
 @st.cache_data
-def load_sample_data():
-    """Загружает или генерирует данные"""
+def демо_данные() -> pd.DataFrame:
     np.random.seed(42)
-    месяцы = pd.date_range(start='2023-01-01', periods=24, freq='MS')
-    
-    данные = []
+    месяцы = pd.date_range(start="2024-01-01", periods=24, freq="MS")
+
+    строки = []
     план_база = 1_000_000
-    
+
+    регионы = ["Москва", "Санкт‑Петербург", "Регионы", "Интернет"]
+    категории = ["Продукты", "Напитки", "Молочное", "Прочее"]
+
     for i, месяц in enumerate(месяцы):
-        сезонность = 1.0 + 0.3 * np.sin(2 * np.pi * i / 12)
-        
-        план = план_база * сезонность * np.random.uniform(0.95, 1.05)
-        факт = план * np.random.uniform(0.85, 1.10)
-        
+        сезонность = 1.0 + 0.28 * np.sin(2 * np.pi * i / 12)
+        план = план_база * сезонность * np.random.uniform(0.95, 1.06)
+        факт = план * np.random.uniform(0.84, 1.10)
+
         база_маржа = 0.35 if i < 12 else 0.32
         маржа = база_маржа + np.random.uniform(-0.02, 0.02)
-        
-        данные.append({
-            'Дата': месяц,
-            'План': план,
-            'Факт': факт,
-            'Маржа': max(0.20, min(0.40, маржа)),
-            'Заказы': int(факт / 50_000 + np.random.randint(-10, 20)),
-            'Регион': np.random.choice(['Москва', 'СПб', 'Регионы', 'Интернет']),
-            'Категория': np.random.choice(['Продукты', 'Напитки', 'Молочное', 'Прочее']),
-            'Клиент': f"Клиент_{np.random.randint(1, 50)}",
-            'Средний_чек': fakkt / max(1, int(факт / 50_000)) if факт > 0 else 0
-        })
-    
-    return pd.DataFrame(данные)
+        маржа = float(np.clip(маржа, 0.20, 0.45))
 
-# ==================== РАСЧЁТЫ И АНАЛИТИКА ====================
+        заказы = int(max(1, факт / 55_000 + np.random.randint(-8, 18)))
+        средний_чек = факт / max(1, заказы)
 
-def рассчитать_показатели(df):
-    """Вычисляет все показатели"""
+        строки.append(
+            {
+                "Дата": месяц,
+                "План": float(план),
+                "Факт": float(факт),
+                "Маржа": float(маржа),
+                "Заказы": int(заказы),
+                "Регион": str(np.random.choice(регионы)),
+                "Категория": str(np.random.choice(категории)),
+                "Клиент": f"Клиент_{int(np.random.randint(1, 60))}",
+                "Средний_чек": float(средний_чек),
+            }
+        )
+
+    return pd.DataFrame(строки)
+
+
+def загрузить_csv(uploaded_file) -> pd.DataFrame:
+    df = pd.read_csv(uploaded_file)
+
+    # Приведение колонок (если пользователь назвал похоже)
+    # Минимально нужны: Дата, План, Факт, Маржа, Заказы
+    if "Дата" in df.columns:
+        df["Дата"] = pd.to_datetime(df["Дата"], errors="coerce")
+    else:
+        raise ValueError("В CSV нет колонки 'Дата'.")
+
+    for col in ["План", "Факт", "Маржа", "Заказы"]:
+        if col not in df.columns:
+            raise ValueError(f"В CSV нет колонки '{col}'.")
+
+    df["План"] = pd.to_numeric(df["План"], errors="coerce")
+    df["Факт"] = pd.to_numeric(df["Факт"], errors="coerce")
+    df["Заказы"] = pd.to_numeric(df["Заказы"], errors="coerce")
+
+    df["Маржа"] = df["Маржа"].apply(_нормализовать_маржу)
+
+    # Опциональные
+    if "Регион" not in df.columns:
+        df["Регион"] = "Не указан"
+    if "Категория" not in df.columns:
+        df["Категория"] = "Не указана"
+    if "Клиент" not in df.columns:
+        df["Клиент"] = "Не указан"
+
+    df = df.dropna(subset=["Дата", "План", "Факт", "Маржа", "Заказы"]).sort_values("Дата")
+    return df
+
+
+# ==================== АНАЛИТИКА ====================
+
+def рассчитать_показатели(df: pd.DataFrame) -> dict:
+    if df.empty:
+        return {
+            "доход_текущий": 0.0,
+            "доход_изменение": 0.0,
+            "маржа": 0.0,
+            "маржа_снижается": False,
+            "выполнение_плана": 0.0,
+            "заказы": 0,
+            "заказы_изменение": 0,
+            "индекс_риска": 0.0,
+        }
+
+    df = df.sort_values("Дата")
     текущий = df.iloc[-1]
-    предыдущий = df.iloc[-2] if len(df) > 1 else df.iloc[0]
-    
-    результаты = {
-        'доход_текущий': текущий['Факт'],
-        'доход_изменение': ((текущий['Факт'] - предыдущий['Факт']) / предыдущий['Факт'] * 100) if предыдущий['Факт'] > 0 else 0,
-        'маржа': текущий['Маржа'] * 100,
-        'маржа_снижается': текущий['Маржа'] < предыдущий['Маржа'],
-        'выполнение_плана': (текущий['Факт'] / текущий['План'] * 100) if текущий['План'] > 0 else 0,
-        'заказы': текущий['Заказы'],
-        'заказы_изменение': текущий['Заказы'] - предыдущий['Заказы'],
-    }
-    
-    # Индекс риска
-    фактор_маржа = max(0, (предыдущий['Маржа'] - текущий['Маржа']) / предыдущий['Маржа'] * 100) if предыдущий['Маржа'] > 0 else 0
-    фактор_выполнение = max(0, (100 - результаты['выполнение_плана']) / 100 * 100)
-    результаты['индекс_риска'] = (фактор_маржа * 0.4 + фактор_выполнение * 0.6)
-    
-    return результаты
+    предыдущий = df.iloc[-2] if len(df) >= 2 else df.iloc[-1]
 
-def прогноз_на_3_месяца(df):
-    """Прогнозирует доход на 3 месяца"""
+    доход_текущий = float(текущий["Факт"])
+    доход_предыдущий = float(предыдущий["Факт"]) if float(предыдущий["Факт"]) != 0 else np.nan
+
+    изменение = 0.0
+    if not np.isnan(доход_предыдущий) and доход_предыдущий != 0:
+        изменение = (доход_текущий - доход_предыдущий) / доход_предыдущий * 100
+
+    маржа_тек = float(текущий["Маржа"]) * 100
+    маржа_пред = float(предыдущий["Маржа"]) * 100
+    маржа_снижается = маржа_тек < маржа_пред
+
+    выполнение = 0.0
+    if float(текущий["План"]) != 0:
+        выполнение = float(текущий["Факт"]) / float(текущий["План"]) * 100
+
+    заказы = int(текущий["Заказы"])
+    заказы_пред = int(предыдущий["Заказы"])
+    заказы_изм = заказы - заказы_пред
+
+    # Индекс риска: недовыполнение + падение маржи (просто и понятно)
+    фактор_маржа = max(0.0, (маржа_пред - маржа_тек))
+    фактор_план = max(0.0, 100.0 - выполнение)
+    индекс_риска = float(np.clip(fактор_маржа * 1.2 + фактор_план * 0.8, 0, 100))
+
+    return {
+        "доход_текущий": доход_текущий,
+        "доход_изменение": float(изменение),
+        "маржа": float(маржа_тек),
+        "маржа_снижается": bool(маржа_снижается),
+        "выполнение_плана": float(выполнение),
+        "заказы": int(заказы),
+        "заказы_изменение": int(заказы_изм),
+        "индекс_риска": индекс_риска,
+    }
+
+
+def прогноз_на_3_месяца(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.sort_values("Дата")
+    if len(df) < 3:
+        return pd.DataFrame({"Дата": [], "Прогноз": []})
+
     X = np.arange(len(df)).reshape(-1, 1)
-    y = df['Факт'].values
-    
+    y = df["Факт"].values.astype(float)
+
     model = LinearRegression()
     model.fit(X, y)
-    
-    future_X = np.array([[len(df)], [len(df)+1], [len(df)+2]])
+
+    future_X = np.array([[len(df)], [len(df) + 1], [len(df) + 2]])
     forecast = model.predict(future_X)
-    
-    dates = pd.date_range(start=df.iloc[-1]['Дата'] + timedelta(days=32), periods=3, freq='MS')
-    
-    return pd.DataFrame({
-        'Дата': dates,
-        'Прогноз': forecast
-    })
 
-def abc_анализ(df):
-    """ABC анализ клиентов"""
-    клиент_доход = df.groupby('Клиент')['Факт'].sum().sort_values(ascending=False)
-    total = клиент_доход.sum()
-    
-    abc = []
-    cumsum = 0
+    dates = pd.date_range(start=df.iloc[-1]["Дата"] + pd.offsets.MonthBegin(1), periods=3, freq="MS")
+
+    return pd.DataFrame({"Дата": dates, "Прогноз": forecast})
+
+
+def abc_анализ(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=["Клиент", "Доход", "Доля_%", "Категория"])
+
+    клиент_доход = df.groupby("Клиент")["Факт"].sum().sort_values(ascending=False)
+    total = float(клиент_доход.sum()) if float(клиент_доход.sum()) != 0 else 1.0
+
+    rows = []
+    cumsum = 0.0
     for клиент, доход in клиент_доход.items():
-        cumsum += доход
-        процент = cumsum / total * 100
-        
-        if процент <= 80:
-            категория = 'A'
-        elif процент <= 95:
-            категория = 'B'
-        else:
-            категория = 'C'
-        
-        abc.append({
-            'Клиент': клиент,
-            'Доход': доход,
-            'Доля_%': доход/total*100,
-            'Категория': категория
-        })
-    
-    return pd.DataFrame(abc)
+        cumsum += float(доход)
+        pct_cum = cumsum / total * 100
 
-def сравнение_периодов(df):
-    """Сравнивает два периода"""
-    df_текущий = df[df['Дата'] >= df['Дата'].max() - timedelta(days=365)]
-    df_прошлый = df[df['Дата'] < df['Дата'].max() - timedelta(days=365)]
-    
-    return {
-        'текущий_доход': df_текущий['Факт'].sum(),
-        'прошлый_доход': df_прошлый['Факт'].sum() if len(df_прошлый) > 0 else 0,
-        'текущее_выполнение': (df_текущий['Факт'].sum() / df_текущий['План'].sum() * 100) if df_текущий['План'].sum() > 0 else 0,
-        'прошлое_выполнение': (df_прошлый['Факт'].sum() / df_прошлый['План'].sum() * 100) if df_прошлый['План'].sum() > 0 else 0,
-    }
+        if pct_cum <= 80:
+            cat = "A"
+        elif pct_cum <= 95:
+            cat = "B"
+        else:
+            cat = "C"
+
+        rows.append(
+            {
+                "Клиент": клиент,
+                "Доход": float(доход),
+                "Доля_%": float(доход) / total * 100,
+                "Категория": cat,
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def сравнение_год_к_году(df: pd.DataFrame) -> dict:
+    if df.empty:
+        return {"текущий_доход": 0.0, "прошлый_доход": 0.0, "pct": 0.0}
+
+    max_date = df["Дата"].max()
+    год_назад = max_date - timedelta(days=365)
+
+    текущий = df[df["Дата"] > год_назад]
+    прошлый = df[df["Дата"] <= год_назад]
+
+    тек = float(текущий["Факт"].sum())
+    прош = float(прошлый["Факт"].sum()) if len(прошлый) else 0.0
+
+    pct = 0.0
+    if прош != 0:
+        pct = (тек - прош) / прош * 100
+
+    return {"текущий_доход": тек, "прошлый_доход": прош, "pct": pct}
+
 
 # ==================== ЭКСПОРТ ====================
 
-def экспорт_в_excel(df, показатели, прогноз):
-    """Экспортирует отчёт в Excel"""
+def экспорт_в_excel(df: pd.DataFrame, показатели: dict, прогноз: pd.DataFrame) -> BytesIO:
     output = BytesIO()
-    
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Основные показатели
-        summary_df = pd.DataFrame({
-            'Показатель': ['Доход (текущий месяц)', 'Изменение', 'Маржа', 'Выполнение плана', 'Индекс риска'],
-            'Значение': [
-                f"{показатели['доход_текущий']:,.0f} руб",
-                f"{показатели['доход_изменение']:.1f}%",
-                f"{показатели['маржа']:.1f}%",
-                f"{показатели['выполнение_плана']:.0f}%",
-                f"{показатели['индекс_риска']:.0f}/100"
-            ]
-        })
-        summary_df.to_excel(writer, sheet_name='Показатели', index=False)
-        
-        # Данные
-        df.to_excel(writer, sheet_name='Данные', index=False)
-        
-        # Прогноз
-        прогноз.to_excel(writer, sheet_name='Прогноз', index=False)
-    
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        summary_df = pd.DataFrame(
+            {
+                "Показатель": [
+                    "Доход (последний месяц)",
+                    "Изменение к предыдущему",
+                    "Маржа (последний месяц)",
+                    "Выполнение плана",
+                    "Индекс риска",
+                ],
+                "Значение": [
+                    f"{показатели['доход_текущий']:,.0f}",
+                    f"{показатели['доход_изменение']:+.1f}%",
+                    f"{показатели['маржа']:.1f}%",
+                    f"{показатели['выполнение_плана']:.0f}%",
+                    f"{показатели['индекс_риска']:.0f}/100",
+                ],
+            }
+        )
+        summary_df.to_excel(writer, sheet_name="Показатели", index=False)
+        df.to_excel(writer, sheet_name="Данные", index=False)
+        прогноз.to_excel(writer, sheet_name="Прогноз", index=False)
+
     output.seek(0)
     return output
 
-def экспорт_в_pdf(показатели):
-    """Подготавливает данные для PDF экспорта"""
-    pdf_content = f"""
-    ПАНЕЛЬ УПРАВЛЕНИЯ БИЗНЕСОМ
-    ====================================
-    
-    Дата отчёта: {datetime.now().strftime('%d.%m.%Y %H:%M')}
-    
-    КЛЮЧЕВЫЕ ПОКАЗАТЕЛИ:
-    
-    Доход: {показатели['доход_текущий']:,.0f} руб
-    Изменение: {показатели['доход_изменение']:+.1f}%
-    
-    Маржа: {показатели['маржа']:.1f}%
-    Выполнение плана: {показатели['выполнение_плана']:.0f}%
-    
-    Индекс риска: {показатели['индекс_риска']:.0f}/100
-    """
-    return pdf_content
 
-# ==================== ГЛАВНОЕ ПРИЛОЖЕНИЕ ====================
+# ==================== ПРИЛОЖЕНИЕ ====================
 
-def main():
-    check_password()
-    apply_styles()
-    
-    st.set_page_config(page_title="Панель управления", layout="wide", initial_sidebar_state="expanded")
-    
-    # Загрузка данных
+def main() -> None:
+    проверка_пароля()
+    применить_стили()
+
     if "df" not in st.session_state:
-        st.session_state.df = load_sample_data()
-    
-    df = st.session_state.df
-    показатели = рассчитать_показатели(df)
-    прогноз = прогноз_на_3_месяца(df)
-    abc = abc_анализ(df)
-    сравнение = сравнение_периодов(df)
-    
-    # ==================== SIDEBAR ====================
+        st.session_state.df = демо_данные()
+
+    df = st.session_state.df.copy()
+
     with st.sidebar:
-        st.markdown("### ⚙️ Управление")
-        
-        # Загрузка данных
-        st.markdown("**Загрузка данных**")
-        uploaded_file = st.file_uploader("Загрузите CSV с данными", type="csv")
-        if uploaded_file is not None:
-            st.session_state.df = pd.read_csv(uploaded_file)
-            st.success("✓ Данные загружены")
-            st.rerun()
-        
-        # Фильтры
-        st.markdown("**Фильтры**")
-        periode_filter = st.selectbox("Период", ["Все", "Последний год", "Последний квартал", "Последний месяц"])
-        
-        region_filter = st.multiselect("Регион", df['Регион'].unique(), default=df['Регион'].unique())
-        category_filter = st.multiselect("Категория", df['Категория'].unique(), default=df['Категория'].unique())
-        
-        # Применение фильтров
-        df_filtered = df.copy()
-        if periode_filter == "Последний год":
-            df_filtered = df_filtered[df_filtered['Дата'] >= df_filtered['Дата'].max() - timedelta(days=365)]
-        elif periode_filter == "Последний квартал":
-            df_filtered = df_filtered[df_filtered['Дата'] >= df_filtered['Дата'].max() - timedelta(days=90)]
-        elif periode_filter == "Последний месяц":
-            df_filtered = df_filtered[df_filtered['Дата'] >= df_filtered['Дата'].max() - timedelta(days=30)]
-        
-        df_filtered = df_filtered[df_filtered['Регион'].isin(region_filter) & df_filtered['Категория'].isin(category_filter)]
-        
-        # Экспорт
-        st.markdown("**Экспорт отчёта**")
-        excel_file = экспорт_в_excel(df_filtered, показатели, прогноз)
-        st.download_button(
-            label="📥 Скачать Excel",
-            data=excel_file.getvalue(),
-            file_name=f"отчёт_{datetime.now().strftime('%d.%m.%Y')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        
-        # Выход
+        st.markdown("### Управление")
+        st.markdown("**Данные**")
+        uploaded = st.file_uploader("Загрузить CSV", type="csv")
+        if uploaded is not None:
+            try:
+                st.session_state.df = загрузить_csv(uploaded)
+                st.success("Данные загружены")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Ошибка CSV: {e}")
+
         st.markdown("---")
-        if st.button("🚪 Выход"):
-            st.session_state.authenticated = False
+        st.markdown("**Фильтры**")
+
+        период = st.selectbox("Период", ["Все", "Последний год", "Последний квартал", "Последний месяц"])
+
+        регионы = sorted(df["Регион"].astype(str).unique().tolist())
+        категории = sorted(df["Категория"].astype(str).unique().tolist())
+
+        выбранные_регионы = st.multiselect("Регион", регионы, default=регионы)
+        выбранные_категории = st.multiselect("Категория", категории, default=категории)
+
+        st.markdown("---")
+        st.markdown("**Экспорт** (по отфильтрованным данным)")
+        st.caption("Excel формируется из текущего набора данных.")
+
+        if st.button("Выйти", use_container_width=True):
+            st.session_state.авторизован = False
             st.rerun()
-    
-    # ==================== ГЛАВНАЯ СТРАНИЦА ====================
-    
+
+    # Применяем фильтры
+    df_f = df.copy().sort_values("Дата")
+
+    if период == "Последний год":
+        df_f = df_f[df_f["Дата"] >= df_f["Дата"].max() - timedelta(days=365)]
+    elif период == "Последний квартал":
+        df_f = df_f[df_f["Дата"] >= df_f["Дата"].max() - timedelta(days=90)]
+    elif период == "Последний месяц":
+        df_f = df_f[df_f["Дата"] >= df_f["Дата"].max() - timedelta(days=31)]
+
+    df_f = df_f[df_f["Регион"].isin(выбранные_регионы) & df_f["Категория"].isin(выбранные_категории)]
+
+    # Аналитика по отфильтрованным данным
+    показатели = рассчитать_показатели(df_f)
+    прогноз = прогноз_на_3_месяца(df_f)
+    abc = abc_анализ(df_f)
+    yoy = сравнение_год_к_году(df_f)
+
+    # Экспорт кнопка (после расчётов)
+    with st.sidebar:
+        excel_bytes = экспорт_в_excel(df_f, показатели, прогноз)
+        st.download_button(
+            "Скачать Excel",
+            data=excel_bytes.getvalue(),
+            file_name=f"отчет_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
     # Заголовок
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.markdown("# 📊 Панель управления")
-        st.markdown("*Профессиональная аналитика вашего бизнеса*")
-    with col2:
+    left, right = st.columns([3, 1])
+    with left:
+        st.markdown("# Панель управления")
+        st.markdown('<span class="hint">Профессиональная аналитика бизнеса</span>', unsafe_allow_html=True)
+    with right:
         st.markdown(f"**Обновлено:** {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-    
+
     st.markdown("---")
-    
-    # ==================== 6 ОСНОВНЫХ ПОКАЗАТЕЛЕЙ ====================
-    st.markdown("### 📈 Ключевые показатели")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Доход</div>
-            <div class="metric-value">{показатели['доход_текущий']/1_000_000:.2f}М</div>
-            <div class="metric-change {'positive' if показатели['доход_изменение'] >= 0 else 'negative'}">
-                {'↑' if показатели['доход_изменение'] >= 0 else '↓'} {abs(показатели['доход_изменение']):.1f}%
+
+    # 6 KPI
+    st.markdown("### Ключевые показатели")
+    c1, c2, c3 = st.columns(3)
+    c4, c5, c6 = st.columns(3)
+
+    def _карточка(title, value, change_text, cls):
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-title">{title}</div>
+                <div class="metric-value">{value}</div>
+                <div class="metric-change {cls}">{change_text}</div>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        цвет = 'warning' if показатели['маржа_снижается'] else 'positive'
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Маржа</div>
-            <div class="metric-value {цвет}">{показатели['маржа']:.1f}%</div>
-            <div class="metric-change neutral">
-                {'⚠️ На спаде' if показатели['маржа_снижается'] else '✓ Стабильна'}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        цвет = 'positive' if показатели['выполнение_плана'] >= 95 else 'warning' if показатели['выполнение_плана'] >= 85 else 'negative'
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Выполнение плана</div>
-            <div class="metric-value {цвет}">{показатели['выполнение_плана']:.0f}%</div>
-            <div class="metric-change neutral">факт / план</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        цвет = 'positive' if показатели['индекс_риска'] < 30 else 'warning' if показатели['индекс_риска'] < 60 else 'negative'
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Индекс риска</div>
-            <div class="metric-value {цвет}">{показатели['индекс_риска']:.0f}</div>
-            <div class="metric-change neutral">шкала 0-100</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        цвет = 'positive' if показатели['заказы_изменение'] >= 0 else 'negative'
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Объём заказов</div>
-            <div class="metric-value">{показатели['заказы']}</div>
-            <div class="metric-change {цвет}">
-                {'↑' if показатели['заказы_изменение'] >= 0 else '↓'} {abs(показатели['заказы_изменение'])}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        изм = сравнение['текущий_доход'] - сравнение['прошлый_доход']
-        цвет = 'positive' if изм >= 0 else 'negative'
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-title">Год к году</div>
-            <div class="metric-value {цвет}">{изм/1_000_000:+.2f}М</div>
-            <div class="metric-change neutral">за год</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # ==================== ГРАФИК ПЛАН VS ФАКТ ====================
-    st.markdown("### 📉 План vs Факт")
-    
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with c1:
+        cls = "positive" if показатели["доход_изменение"] >= 0 else "negative"
+        стрелка = "↑" if показатели["доход_изменение"] >= 0 else "↓"
+        _карточка(
+            "Доход",
+            f"{показатели['доход_текущий']/1_000_000:.2f}М",
+            f"{стрелка} {abs(показатели['доход_изменение']):.1f}%",
+            cls,
+        )
+
+    with c2:
+        cls = "warning" if показатели["маржа_снижается"] else "positive"
+        подпись = "Маржа снижается" if показатели["маржа_снижается"] else "Маржа стабильна"
+        _карточка("Маржа", f"{показатели['маржа']:.1f}%", подпись, cls)
+
+    with c3:
+        perf = показатели["выполнение_плана"]
+        cls = "positive" if perf >= 95 else "warning" if perf >= 85 else "negative"
+        _карточка("Выполнение плана", f"{perf:.0f}%", "Факт / План", cls)
+
+    with c4:
+        risk = показатели["индекс_риска"]
+        cls = "positive" if risk < 30 else "warning" if risk < 60 else "negative"
+        _карточка("Индекс риска", f"{risk:.0f}", "Шкала 0–100", cls)
+
+    with c5:
+        cls = "positive" if показатели["заказы_изменение"] >= 0 else "negative"
+        стрелка = "↑" if показатели["заказы_изменение"] >= 0 else "↓"
+        _карточка("Объём заказов", f"{показатели['заказы']}", f"{стрелка} {abs(показатели['заказы_изменение'])}", cls)
+
+    with c6:
+        cls = "positive" if yoy["pct"] >= 0 else "negative"
+        _карточка("Год к году", f"{yoy['pct']:+.1f}%", "Доход за 12 месяцев", cls)
+
+    # План vs Факт
+    st.markdown("### План vs Факт")
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_filtered['Дата'], y=df_filtered['Факт'], mode='lines', name='Факт', line=dict(color='#10b981', width=3)))
-    fig.add_trace(go.Scatter(x=df_filtered['Дата'], y=df_filtered['План'], mode='lines', name='План', line=dict(color='#8a92a0', width=2, dash='dash')))
-    
+    fig.add_trace(
+        go.Scatter(
+            x=df_f["Дата"],
+            y=df_f["Факт"],
+            mode="lines",
+            name="Факт",
+            line=dict(color="#10b981", width=3),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df_f["Дата"],
+            y=df_f["План"],
+            mode="lines",
+            name="План",
+            line=dict(color="#8a92a0", width=2, dash="dash"),
+        )
+    )
     fig.update_layout(
-        template='plotly_dark', hovermode='x unified', height=400,
-        paper_bgcolor='#0f1419', plot_bgcolor='#1a1f29',
-        font=dict(color='#e0e0e0', size=12),
-        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#2a3038'),
-        legend=dict(x=0.02, y=0.98)
+        template="plotly_dark",
+        hovermode="x unified",
+        height=380,
+        paper_bgcolor="#0f1419",
+        plot_bgcolor="#151b24",
+        font=dict(color="#e0e0e0", size=12),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#2a3038"),
+        legend=dict(x=0.02, y=0.98),
+        margin=dict(l=10, r=10, t=10, b=10),
     )
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-    
-    # ==================== ПРОГНОЗ ====================
-    st.markdown("### 🔮 Прогноз на 3 месяца")
-    
-    st.markdown(f"""
-    <div class="forecast-box">
-    <strong>Прогнозируемый доход на основе тренда:</strong><br>
-    {f"{прогноз.iloc[0]['Прогноз']/1_000_000:.2f}М → {прогноз.iloc[1]['Прогноз']/1_000_000:.2f}М → {прогноз.iloc[2]['Прогноз']/1_000_000:.2f}М"}
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ==================== ABC АНАЛИЗ ====================
-    st.markdown("### 💡 ABC-анализ клиентов")
-    st.markdown("*Какие клиенты приносят 80% дохода*")
-    
-    abc_a = abc[abc['Категория'] == 'A']
-    abc_b = abc[abc['Категория'] == 'B']
-    abc_c = abc[abc['Категория'] == 'C']
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("🏆 Категория A", f"{len(abc_a)} клиентов", f"{abc_a['Доля_%'].sum():.1f}% дохода")
-    with col2:
-        st.metric("🥈 Категория B", f"{len(abc_b)} клиентов", f"{abc_b['Доля_%'].sum():.1f}% дохода")
-    with col3:
-        st.metric("🥉 Категория C", f"{len(abc_c)} клиентов", f"{abc_c['Доля_%'].sum():.1f}% дохода")
-    
-    st.dataframe(abc.head(15), use_container_width=True, hide_index=True)
-    
-    # ==================== СРАВНЕНИЕ ПЕРИОДОВ ====================
-    st.markdown("### 📊 Сравнение с прошлым годом")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        изм = сравнение['текущий_доход'] - сравнение['прошлый_доход']
-        pct = (изм / сравнение['прошлый_доход'] * 100) if сравнение['прошлый_доход'] > 0 else 0
-        st.metric("Доход (текущий год)", f"{сравнение['текущий_доход']/1_000_000:.2f}М", f"{pct:+.1f}%")
-    with col2:
-        изм = сравнение['текущее_выполнение'] - сравнение['прошлое_выполнение']
-        st.metric("Выполнение плана", f"{сравнение['текущее_выполнение']:.0f}%", f"{изм:+.1f}%")
-    
-    # ==================== ТАБЛИЦА ДАННЫХ ====================
-    st.markdown("### 📋 Подробные данные")
-    
-    cols_to_show = ['Дата', 'Регион', 'Категория', 'Факт', 'План', 'Заказы', 'Маржа']
-    st.dataframe(
-        df_filtered[cols_to_show].sort_values('Дата', ascending=False),
-        use_container_width=True,
-        hide_index=True
-    )
-    
-    # ==================== АЛЕРТЫ ====================
-    st.markdown("### ⚠️ Алерты и уведомления")
-    
-    if показатели['индекс_риска'] > 60:
-        st.markdown(f"""
-        <div class="alert-box" style="border-left-color: #ef4444;">
-        <strong>🚨 КРИТИЧЕСКОЕ ВНИМАНИЕ</strong><br>
-        Индекс риска достиг {показатели['индекс_риска']:.0f}%. Требуется срочное действие.
-        </div>
-        """, unsafe_allow_html=True)
-    
-    if показатели['выполнение_плана'] < 85:
-        st.markdown(f"""
-        <div class="alert-box warning">
-        <strong>⚠️ Выполнение плана низкое</strong><br>
-        Текущее выполнение {показатели['выполнение_плана']:.0f}%, требуется активизация.
-        </div>
-        """, unsafe_allow_html=True)
-    
-    if показатели['маржа_снижается']:
-        st.markdown(f"""
-        <div class="alert-box warning">
-        <strong>⚠️ Маржа снижается</strong><br>
-        Текущая маржа {показатели['маржа']:.1f}%. Проверьте себестоимость.
-        </div>
-        """, unsafe_allow_html=True)
-    
-    if показатели['индекс_риска'] < 30:
-        st.markdown(f"""
-        <div class="alert-box success">
-        <strong>✅ Бизнес в порядке</strong><br>
-        Все показатели в норме. Индекс риска {показатели['индекс_риска']:.0f}%.
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Footer
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    # Прогноз
+    st.markdown("### Прогноз на 3 месяца")
+    if прогноз.empty:
+        st.info("Недостаточно данных для прогноза (нужно хотя бы 3 точки).")
+    else:
+        st.markdown(
+            f"""
+            <div class="box">
+                <div><b>Оценка тренда (по отфильтрованным данным):</b></div>
+                <div style="margin-top:8px;">
+                    {прогноз.iloc[0]['Прогноз']/1_000_000:.2f}М →
+                    {прогноз.iloc[1]['Прогноз']/1_000_000:.2f}М →
+                    {прогноз.iloc[2]['Прогноз']/1_000_000:.2f}М
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # ABC
+    st.markdown("### ABC-анализ клиентов")
+    if abc.empty:
+        st.info("Нет данных для ABC-анализа.")
+    else:
+        a = abc[abc["Категория"] == "A"]
+        b = abc[abc["Категория"] == "B"]
+        c = abc[abc["Категория"] == "C"]
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Категория A", f"{len(a)}", f"{a['Доля_%'].sum():.1f}% дохода")
+        k2.metric("Категория B", f"{len(b)}", f"{b['Доля_%'].sum():.1f}% дохода")
+        k3.metric("Категория C", f"{len(c)}", f"{c['Доля_%'].sum():.1f}% дохода")
+
+        st.dataframe(abc.head(20), use_container_width=True, hide_index=True)
+
+    # Детали
+    st.markdown("### Подробные данные")
+    cols_to_show = ["Дата", "Регион", "Категория", "Клиент", "Факт", "План", "Заказы", "Маржа"]
+    show = df_f[cols_to_show].copy()
+    show["Маржа"] = (show["Маржа"] * 100).round(1)
+    st.dataframe(show.sort_values("Дата", ascending=False), use_container_width=True, hide_index=True)
+
+    # Алерты
+    st.markdown("### Алерты")
+    risk = показатели["индекс_риска"]
+    perf = показатели["выполнение_плана"]
+    margin_drop = показатели["маржа_снижается"]
+
+    if risk >= 60:
+        st.markdown(
+            f'<div class="alert alert-danger"><b>Критично:</b> индекс риска {risk:.0f}/100. Нужны действия.</div>',
+            unsafe_allow_html=True,
+        )
+    if perf < 85:
+        st.markdown(
+            f'<div class="alert alert-warn"><b>Внимание:</b> выполнение плана {perf:.0f}%. Проверьте причины.</div>',
+            unsafe_allow_html=True,
+        )
+    if margin_drop:
+        st.markdown(
+            f'<div class="alert alert-warn"><b>Внимание:</b> маржа снижается (сейчас {показатели["маржа"]:.1f}%).</div>',
+            unsafe_allow_html=True,
+        )
+    if (risk < 30) and (perf >= 90) and (not margin_drop):
+        st.markdown(
+            f'<div class="alert alert-ok"><b>Норма:</b> ключевые показатели выглядят стабильно.</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown("---")
-    st.markdown("""
-    <div style="text-align: center; color: #8a92a0; font-size: 12px;">
-    <strong>Панель управления бизнесом</strong> | Профессиональный инструмент аналитики | v1.0<br>
-    Цена: 50 000 руб | Вопросы: support@example.com
-    </div>
-    """, unsafe_allow_html=True)
+    st.caption("Версия 1.0 • Панель управления бизнесом")
+
 
 if __name__ == "__main__":
     main()
