@@ -464,7 +464,7 @@ def main() -> None:
         st.markdown("# Панель управления")
         st.markdown('<span class="hint">Профессиональная аналитика бизнеса</span>', unsafe_allow_html=True)
     with right:
-        st.markdown(f"**Обновлено:** {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+        st.markdown(f"**Обновлено:** {datetime.now().strftime('%d.%m.%Y')}")
 
     st.markdown("---")
 
